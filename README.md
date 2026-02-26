@@ -29,8 +29,68 @@
 - **GitHub Desktop 활용**: GUI 기반 툴을 사용하여 복잡한 Git 명령어 대신 직관적인 버전 관리 및 커밋 로그 관리 수행
 - **Branch & Merge 전략**: 기능을 분담하여 각자의 브랜치에서 개발 후, 작업 완료 시 `Main` 브랜치에 안전하게 `Merge`하여 통합
 - **실시간 동기화 (Pull & Push)**: 작업 시작 전 `Pull`을 통해 팀원의 최신 코드를 반영하고, 내 작업물을 `Push`하며 충돌(Conflict)을 최소화하는 협업 사이클 숙달
+  
+## 🛠 핵심 개발 상세 (Technical Deep Dive)
+단기간 내 다양한 몬스터 패턴을 구현하기 위해 행동 단위(Behavior)를 인터페이스로 추상화하고, 이를 조립하는 **전략 패턴(Strategy Pattern)**을 설계했습니다.
+
+-**행동의 인터페이스화**: 감지(IPlayerDetector), 추적(IChaseBehavior), 공격(IAttackBehavior) 등을 독립된 인터페이스로 분리하여 몬스터마다 최적화된 구현체를 장착할 수 있도록 구성했습니다.
+
+<details>
+  <summary>
+    독립 인터페이스 
+  </summary>
+
+  ```cs
 
 
+public interface IWatchBehavior
+{
+    void Watch(Transform monster, Transform player, Rigidbody2D rb);
+    bool ShouldChase(Transform monster, Transform player);
+    void ResetWatch();
+}
+
+public class PassiveWatch : IWatchBehavior
+{
+    private float chaseRange;
+    private float watchStartTime = -1f;
+    private bool isWatching = false;
+    public PassiveWatch(float chaseRange)
+    {
+        this.chaseRange = chaseRange;
+    }
+
+    public void Watch(Transform monster, Transform player, Rigidbody2D rb)
+    {
+        if (!isWatching)
+        {
+            watchStartTime = Time.time;
+            isWatching = true;
+        }
+        if (player.position.x < monster.position.x && monster.localScale.x > 0)
+            monster.localScale = new Vector3(-1, 1, 1);
+        else if (player.position.x > monster.position.x && monster.localScale.x < 0)
+            monster.localScale = new Vector3(1, 1, 1);
+
+
+        rb.velocity = Vector2.zero;
+    }
+
+    public bool ShouldChase(Transform monster, Transform player)
+    {
+        return isWatching && Time.time - watchStartTime >= 1f && Mathf.Abs(player.position.x - monster.position.x) < chaseRange;
+    }
+
+    public void ResetWatch()
+    {
+        isWatching = false;
+        watchStartTime = -1f;
+    }
+}
+
+
+
+```
 
 ---
 
