@@ -456,7 +456,7 @@ Rigidbody2D의 Constraints(Z-Rotation) 고정.
 Ledge Detection: 이동 방향 앞바닥을 Raycast로 감지하여 낭떠러지 앞 정지 로직 추가.
 
 <details>
-<summary>코드(SoundManager.cs)</summary>
+<summary>코드</summary>
   
 ```cs
 
@@ -506,10 +506,19 @@ audioSource.Play() 대신 PlayOneShot()을 사용하여 사운드 레이어 중�
 ```cs
 public void PlaySound(SoundType type, float volume = 0.3f)
 {
+    if (type == SoundType.BackgroundMusic || type == SoundType.MainBackgroundMusic)
+        return; // 배경음악은 별도로 처리
+
     if (clipMap.TryGetValue(type, out var clip) && clip != null)
     {
-        // 핵심: PlayOneShot은 이전 사운드를 끊지 않고 중첩해서 재생합니다.
-        audioSource.PlayOneShot(clip, volume);
+        playQueue.Enqueue(clip);
+
+        var next = playQueue.Dequeue();
+        audioSource.PlayOneShot(next, volume);
+    }
+    else
+    {
+        Debug.LogWarning($"SoundManager: '{type}' 클립이 없습니다.");
     }
 }
 ```
@@ -529,48 +538,30 @@ public void PlaySound(SoundType type, float volume = 0.3f)
 ```cs
 
   // 씬이 바뀔 때마다 호출
-    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+{
+    // 이전 BGM 멈춤
+    if (bgmSource.isPlaying) bgmSource.Stop();
+
+    // 재생할 타입 결정
+    SoundType typeToPlay;
+    if (scene.name == "Main") typeToPlay = SoundType.MainBackgroundMusic;
+    else if (scene.name == "Stage") typeToPlay = SoundType.BackgroundMusic;
+    else if (scene.name == "Death")
     {
-        // 이전 BGM 멈춤
-        if (bgmSource.isPlaying) bgmSource.Stop();
-
-        // 재생할 타입 결정
-        SoundType typeToPlay;
-        if (scene.name == "Main") typeToPlay = SoundType.MainBackgroundMusic;
-        else if (scene.name == "Stage") typeToPlay = SoundType.BackgroundMusic;
-        else if (scene.name == "Death")
-        {
-            typeToPlay = SoundType.GameOver;
-            bgmSource.loop = false;
-        }
-        else if (scene.name == "Clear") typeToPlay = SoundType.GameClear;
-        else return; // 그 외 씬은 BGM 없음
-
-        // 클립이 있으면 재생
-        if (clipMap.TryGetValue(typeToPlay, out var clip) && clip != null)
-        {
-            bgmSource.clip = clip;
-            bgmSource.Play();
-        }
+        typeToPlay = SoundType.GameOver;
+        bgmSource.loop = false;
     }
+    else if (scene.name == "Clear") typeToPlay = SoundType.GameClear;
+    else return; // 그 외 씬은 BGM 없음
 
-    public void PlaySound(SoundType type, float volume = 0.3f)
+    // 클립이 있으면 재생
+    if (clipMap.TryGetValue(typeToPlay, out var clip) && clip != null)
     {
-        if (type == SoundType.BackgroundMusic || type == SoundType.MainBackgroundMusic)
-            return; // 배경음악은 별도로 처리
-
-        if (clipMap.TryGetValue(type, out var clip) && clip != null)
-        {
-            playQueue.Enqueue(clip);
-
-            var next = playQueue.Dequeue();
-            audioSource.PlayOneShot(next, volume);
-        }
-        else
-        {
-            Debug.LogWarning($"SoundManager: '{type}' 클립이 없습니다.");
-        }
+        bgmSource.clip = clip;
+        bgmSource.Play();
     }
+}
 
 ```
 </details>
