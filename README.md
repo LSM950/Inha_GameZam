@@ -341,10 +341,9 @@ public class Singleton<T> : MonoBehaviour where T : MonoBehaviour
 }
 ```
 </details>
-
 <details>
 <summary>🔊 사운드 관리 (SoundManager.cs)</summary>
-<blockquote>딕셔너리와 큐를 활용한 효율적인 사운드 재생 시스템입니다.</blockquote>
+<blockquote>딕셔너리와 큐를 활용한 사운드 재생 시스템입니다.</blockquote>
 
 ```cs
 public class SoundManager : Singleton<SoundManager>
@@ -444,9 +443,134 @@ public class SoundManager : Singleton<SoundManager>
 </details>
 
 
+## 🔍 트러블 슈팅 (Trouble Shooting)
 
----------
--------
--------
-----------
-----------
+**1. 몬스터 지형 인식 및 낙사 문제**
+
+문제: 플레이어 추격 or 패트롤 중 낭떠러지로 떨어지거나 벽이나 장애물과 물리 충돌 시 몬스터가 뒤집힘.
+
+**※해결**
+
+Rigidbody2D의 Constraints(Z-Rotation) 고정.
+
+Ledge Detection: 이동 방향 앞바닥을 Raycast로 감지하여 낭떠러지 앞 정지 로직 추가.
+
+<details>
+<summary>코드(SoundManager.cs)</summary>
+  
+```cs
+
+void Patrol()
+{
+    float dir = movingRight ? 1f : -1f;
+    rb.velocity = new Vector2(dir * patrolSpeed, rb.velocity.y);
+
+    Vector3 scale = transform.localScale;
+    scale.x = movingRight ? 1f : -1f;
+    transform.localScale = scale;
+
+    Vector2 groundCheckPos = groundCheck.position + Vector3.right * (movingRight ? 0.3f : -0.3f);
+    RaycastHit2D groundHit = Physics2D.Raycast(groundCheckPos, Vector2.down, 0.1f, groundLayer);
+    RaycastHit2D wallHit = Physics2D.Raycast(wallCheck.position, Vector2.right * (movingRight ? 1f : -1f), 0.1f, groundLayer);
+
+    float moved = Vector2.Distance(transform.position, lastPosition);
+    moveDistance += moved;
+    lastPosition = transform.position;
+
+    if (!groundHit.collider || wallHit.collider || moveDistance >= maxPatrolDistance)
+    {
+        Flip();
+        moveDistance = 0f;
+    }
+
+    Debug.DrawRay(groundCheckPos, Vector2.down * 0.1f, Color.red);
+    Debug.DrawRay(wallCheck.position, Vector2.right * (movingRight ? 0.1f : -0.1f), Color.blue);
+}
+```
+</details>
+
+
+&nbsp; 
+
+**2. 사운드 출력 밀림 현상**
+   
+문제: 연사 시 이전 사운드가 끝나기 전까지 다음 사운드가 재생되지 않음.
+
+**※해결**
+
+audioSource.Play() 대신 PlayOneShot()을 사용하여 사운드 레이어 중첩을 허용, 연속적인 타격감 구현.
+
+<details>
+<summary>코드(SoundManager.cs)</summary>
+  
+```cs
+public void PlaySound(SoundType type, float volume = 0.3f)
+{
+    if (clipMap.TryGetValue(type, out var clip) && clip != null)
+    {
+        // 핵심: PlayOneShot은 이전 사운드를 끊지 않고 중첩해서 재생합니다.
+        audioSource.PlayOneShot(clip, volume);
+    }
+}
+```
+</details>
+
+&nbsp;
+
+**3. 씬 전환 시 BGM 중첩**
+
+문제: 씬 변경시 이전 씬의 BGM이 섞여서 출력 되는 현상
+
+해결: OnSceneLoaded 이벤트를 구독하여 씬 변경 즉시 이전 bgmSource를 Stop하고 새로운 클립을 로드하도록 자동화.
+
+<details>
+<summary>코드(SoundManager.cs)</summary>
+  
+```cs
+
+  // 씬이 바뀔 때마다 호출
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        // 이전 BGM 멈춤
+        if (bgmSource.isPlaying) bgmSource.Stop();
+
+        // 재생할 타입 결정
+        SoundType typeToPlay;
+        if (scene.name == "Main") typeToPlay = SoundType.MainBackgroundMusic;
+        else if (scene.name == "Stage") typeToPlay = SoundType.BackgroundMusic;
+        else if (scene.name == "Death")
+        {
+            typeToPlay = SoundType.GameOver;
+            bgmSource.loop = false;
+        }
+        else if (scene.name == "Clear") typeToPlay = SoundType.GameClear;
+        else return; // 그 외 씬은 BGM 없음
+
+        // 클립이 있으면 재생
+        if (clipMap.TryGetValue(typeToPlay, out var clip) && clip != null)
+        {
+            bgmSource.clip = clip;
+            bgmSource.Play();
+        }
+    }
+
+    public void PlaySound(SoundType type, float volume = 0.3f)
+    {
+        if (type == SoundType.BackgroundMusic || type == SoundType.MainBackgroundMusic)
+            return; // 배경음악은 별도로 처리
+
+        if (clipMap.TryGetValue(type, out var clip) && clip != null)
+        {
+            playQueue.Enqueue(clip);
+
+            var next = playQueue.Dequeue();
+            audioSource.PlayOneShot(next, volume);
+        }
+        else
+        {
+            Debug.LogWarning($"SoundManager: '{type}' 클립이 없습니다.");
+        }
+    }
+
+```
+</details>
